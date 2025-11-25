@@ -30,6 +30,7 @@ import {
   MapPin,
   RefreshCw,
   ChevronLeft,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ import QueryBot from "@/components/QueryBot";
 import { Checkbox } from "@/components/ui/checkbox";
 import ReportHeatmap from "@/components/ReportHeatmap";
 import { PhoneList } from "@/components/PhoneList";
+import { EditReportDialog } from "@/components/EditReportDialog";
 
 interface Report {
   id: string;
@@ -80,6 +82,8 @@ const Dashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const itemsPerPage = 50;
+  const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -321,6 +325,15 @@ const Dashboard = () => {
       }
       return newSet;
     });
+  };
+
+  const handleEditReport = (report: Report) => {
+    setEditingReport(report);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditSuccess = () => {
+    fetchReports();
   };
 
   const stats = {
@@ -664,6 +677,19 @@ const Dashboard = () => {
                             <TableRow key={`${report.id}-expanded`}>
                               <TableCell colSpan={12} className="bg-muted/30 p-6">
                                 <div className="space-y-4">
+                                  <div className="flex justify-end">
+                                    <Button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleEditReport(report);
+                                      }}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      <Pencil className="mr-2 h-4 w-4" />
+                                      แก้ไขข้อมูล
+                                    </Button>
+                                  </div>
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                       <h4 className="font-semibold mb-2">ข้อมูลทั่วไป</h4>
@@ -790,6 +816,15 @@ const Dashboard = () => {
       </div>
 
       <QueryBot />
+
+      {editingReport && (
+        <EditReportDialog
+          report={editingReport}
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          onSuccess={handleEditSuccess}
+        />
+      )}
     </div>
   );
 };
