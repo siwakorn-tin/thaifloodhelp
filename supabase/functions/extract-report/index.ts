@@ -172,14 +172,170 @@ REMEMBER: When in doubt, leave it empty. Wrong data is worse than no data in a d
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'ระบบกำลังใช้งานหนัก กรุณาลองใหม่อีกครั้ง' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       const errorText = await response.text();
       console.error('Gemini API error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        // Gemini Free API has very strict rate limits (2 requests per minute)
+        // Wait and retry once after 30 seconds
+        console.log('Rate limit hit, waiting 30 seconds before retry...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        
+        // Retry the request
+        const retryResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  { text: `แยกข้อมูลจากข้อความนี้:\n\n${rawMessage}` }
+                ]
+              }
+            ],
+            tools: [
+              {
+                function_declarations: [
+                  {
+                    name: 'extract_report_data',
+                    description: 'แยกข้อมูลผู้ประสบภัยจากข้อความ',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        reporter_name: { 
+                          type: 'string', 
+                          description: 'ชื่อของผู้รายงาน/แจ้งเรื่อง ที่มาจากชื่อโปรไฟล์หรือลายเซ็นในข้อความ' 
+                        },
+                        last_contact_at: { 
+                          type: 'string', 
+                          description: 'วันเวลาที่ติดต่อล่าสุด ในรูปแบบ ISO 8601 (ถ้ามีระบุ เช่น "วันที่ 22" "เมื่อวาน")' 
+                        },
+                        name: { 
+                          type: 'string', 
+                          description: 'ชื่อของผู้ประสบภัย' 
+                        },
+                        lastname: { 
+                          type: 'string', 
+                          description: 'นามสกุลของผู้ประสบภัย' 
+                        },
+                        address: { 
+                          type: 'string', 
+                          description: 'ที่อยู่แบบละเอียด รวมหมู่บ้าน ซอย ถนน ตำบล อำเภอ จังหวัด' 
+                        },
+                        location_lat: { 
+                          type: 'string', 
+                          description: 'ละติจูด (ถ้ามี)' 
+                        },
+                        location_long: { 
+                          type: 'string', 
+                          description: 'ลองติจูด (ถ้ามี)' 
+                        },
+                        phone: { 
+                          type: 'array',
+                          items: { type: 'string' },
+                          description: 'เบอร์โทรศัพท์ทั้งหมด' 
+                        },
+                        number_of_adults: { 
+                          type: 'integer', 
+                          description: 'จำนวนผู้ใหญ่' 
+                        },
+                        number_of_children: { 
+                          type: 'integer', 
+                          description: 'จำนวนเด็ก (อายุต่ำกว่า 18 ปี)' 
+                        },
+                        number_of_seniors: { 
+                          type: 'integer', 
+                          description: 'จำนวนผู้สูงอายุ (อายุมากกว่า 60 ปี)' 
+                        },
+                        health_condition: { 
+                          type: 'string', 
+                          description: 'ภาวะสุขภาพพิเศษ เช่น ป่วย พิการ ติดเตียง' 
+                        },
+                        help_needed: { 
+                          type: 'string', 
+                          description: 'ความช่วยเหลือที่ต้องการ เช่น เรือ อาหาร น้ำดื่ม ยา' 
+                        },
+                        additional_info: { 
+                          type: 'string', 
+                          description: 'ข้อมูลเพิ่มเติมที่สำคัญอื่นๆ ที่ควรบันทึก' 
+                        },
+                        urgency_level: { 
+                          type: 'integer', 
+                          description: 'ระดับความเร่งด่วน 1-5 ตามเกณฑ์ที่กำหนด'
+                        }
+                      },
+                      required: []
+                    }
+                  }
+                ]
+              }
+            ],
+            tool_config: {
+              function_calling_config: {
+                mode: 'ANY',
+                allowed_function_names: ['extract_report_data']
+              }
+            }
+          }),
+        });
+        
+        if (!retryResponse.ok) {
+          const retryError = await retryResponse.text();
+          console.error('Retry failed:', retryResponse.status, retryError);
+          return new Response(
+            JSON.stringify({ error: 'Gemini API rate limit - กรุณารอ 1-2 นาทีแล้วลองใหม่อีกครั้ง' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Use retry response instead
+        const data = await retryResponse.json();
+        console.log('Retry successful, AI Response:', JSON.stringify(data));
+        
+        // Extract function calls from Gemini format
+        const functionCalls = data.candidates?.[0]?.content?.parts?.filter((part: any) => part.functionCall);
+        if (!functionCalls || functionCalls.length === 0) {
+          throw new Error('No function call in AI response');
+        }
+
+        // Process all extracted reports
+        const extractedReports = functionCalls.map((part: any) => {
+          const extractedData = part.functionCall.args;
+          
+          return {
+            ...extractedData,
+            raw_message: rawMessage,
+            reporter_name: extractedData.reporter_name || '',
+            last_contact_at: extractedData.last_contact_at || '',
+            lastname: extractedData.lastname || '',
+            location_lat: extractedData.location_lat || '',
+            location_long: extractedData.location_long || '',
+            phone: extractedData.phone || [],
+            number_of_adults: extractedData.number_of_adults || 0,
+            number_of_children: extractedData.number_of_children || 0,
+            number_of_seniors: extractedData.number_of_seniors || 0,
+            health_condition: extractedData.health_condition || '',
+            help_needed: extractedData.help_needed || '',
+            additional_info: extractedData.additional_info || '',
+            name: extractedData.name || '',
+            address: extractedData.address || '',
+            urgency_level: extractedData.urgency_level || 1,
+          };
+        });
+
+        return new Response(
+          JSON.stringify({ 
+            reports: extractedReports,
+            count: extractedReports.length 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
