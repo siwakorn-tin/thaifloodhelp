@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import Tesseract from "tesseract.js";
+import { formatPhoneNumber } from "@/lib/utils";
 
 const Input = () => {
   const [rawMessage, setRawMessage] = useState("");
@@ -152,13 +153,19 @@ const Input = () => {
         throw new Error(data.error);
       }
 
+      // Format phone numbers in extracted reports
+      const formattedReports = data.reports?.map((report: any) => ({
+        ...report,
+        phone: report.phone?.map((p: string) => formatPhoneNumber(p)) || []
+      }));
+
       // Check if multiple reports were extracted
-      if (data.reports && data.reports.length > 1) {
+      if (formattedReports && formattedReports.length > 1) {
         // Navigate to selection page
-        navigate('/select', { state: { reports: data.reports } });
-      } else if (data.reports && data.reports.length === 1) {
+        navigate('/select', { state: { reports: formattedReports } });
+      } else if (formattedReports && formattedReports.length === 1) {
         // Single report - go directly to review
-        navigate('/review', { state: { extractedData: data.reports[0] } });
+        navigate('/review', { state: { extractedData: formattedReports[0] } });
       } else {
         throw new Error('ไม่พบข้อมูลที่สามารถแยกได้');
       }

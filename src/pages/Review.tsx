@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Save, AlertCircle, Loader2, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { formatPhoneNumber } from "@/lib/utils";
 
 
 interface ExtractedData {
@@ -98,11 +99,12 @@ const Review = () => {
     setIsSaving(true);
 
     try {
-      // Parse phone numbers
+      // Parse and format phone numbers
       const phones = phoneInput
         .split(',')
         .map(p => p.trim())
-        .filter(p => p.length > 0);
+        .filter(p => p.length > 0)
+        .map(p => formatPhoneNumber(p));
 
       // Validate and parse last_contact_at - only accept valid datetime format
       let validLastContact = null;
