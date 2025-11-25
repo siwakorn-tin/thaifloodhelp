@@ -326,7 +326,8 @@ const Input = () => {
                   .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width characters
                   .replace(/[^\S\r\n]+/g, ' ') // Normalize spaces
                   .trim();
-                setRawMessage(cleanedText);
+                // Append pasted text to existing content instead of replacing it
+                setRawMessage((prev) => (prev ? prev + cleanedText : cleanedText));
                 setError("");
               }}
               className="min-h-[300px] text-base font-normal resize-none"
